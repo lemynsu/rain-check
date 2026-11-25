@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<!-- data-bs-theme="dark" switches every Bootstrap component to its dark variant -->
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rain Check: Los Angeles vs Taipei</title>
+
+  <!-- Bootstrap 5.3.3 -->
+  <link href="./vendor/bootstrap.min.css" rel="stylesheet">
+
+  <link href="./vendor/fonts.css" rel="stylesheet">
+
+  <style>
+    /* City colors: sunny yellow for LA, deep blue for Taipei */
+    :root {
+      --la: #FBE07A;
+      --taipei: #1157E4;        /* fills and bars */
+      --taipei-text: #6B93F5;   /* lighter blue so text passes contrast on black */
+      --line: #26262A;
+      --muted: #9A9AA0;
+
+      /* Override Bootstrap's own variables instead of fighting its classes */
+      --bs-body-bg: #050505;
+      --bs-body-color: #E8E8EA;
+      --bs-secondary-color: var(--muted);
+      --bs-border-color: var(--line);
+    }
+
+    /* D3 charts: axes follow the dark theme */
+    .chart svg { display: block; width: 100%; height: auto; color: var(--muted); font: 11px system-ui, -apple-system, sans-serif; }
+    .axis .domain { stroke: var(--line); }
+    .axis.grid .tick line { stroke: var(--line); }
+    .unit { fill: var(--muted); font-size: 11px; }
+
+    .display { font-family: "Space Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif; }
+    .kicker { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+
+    /* Cards: flat and dark, a thin line, no shadow */
+    .card { background: #0D0D0F; border-color: var(--line); transition: border-color .3s, box-shadow .3s; }
+    .card-header { background: transparent; border-bottom-color: var(--line); }
+    .chart { min-height: 260px; }   /* reserves space for each chart */
+
+    /* Linked view: marks outside the hovered month fade back */
+    .chart [data-month] { transition: opacity .2s ease; }
+    .chart [data-month].is-faded { opacity: .12; }
+
+    /* Button group styled as an Apple-like segmented control */
+    .segmented {
+      background: rgba(255, 255, 255, .06);
+      border: 1px solid rgba(255, 255, 255, .08);
+      border-radius: 999px; padding: 4px; gap: 2px;
+    }
+    .segmented .btn {
+      flex: 0 0 auto; border: 0; border-radius: 999px !important;
+      padding: .45rem 1.25rem; font-weight: 500; color: var(--muted); background: transparent;
+      transition: background-color .2s ease, color .2s ease;
+    }
+    .segmented .btn:hover { color: #F5F5F7; }
+    .btn-check:checked + .btn {
+      background: #F5F5F7; color: #111;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, .4);
+    }
+    .btn-check:focus-visible + .btn { outline: 2px solid var(--taipei-text); outline-offset: 2px; }
+
+    /* Small city dot keeps the city colors without filling the button */
+    .dot { display: inline-block; width: .5rem; height: .5rem; border-radius: 50%; margin-right: .45rem; vertical-align: .05em; }
+    .dot.la { background: var(--la); }
+    .dot.taipei { background: var(--taipei-text); }
+    @media (prefers-reduced-motion: reduce) { .segmented .btn, .chart [data-month] { transition: none; } }
+  </style>
+</head>
+
+<body>
+  <div class="container py-5">
+
+    <!-- Header -->
+    <header class="mb-5" style="max-width: 46rem;">
+      <p class="kicker mb-3">Los Angeles · Taipei</p>
+      <h1 class="display fw-bold lh-sm mb-3">
+        Rain Check: Los Angeles vs Taipei
+      </h1>
+      <p class="text-secondary mb-0">
+        Taipei is known for its rain, Los Angeles for its sunshine.<br>
+        Do the numbers agree?
+      </p>
+    </header>
+
+    <!-- Controls row: city filter on the left, unit toggle on the right -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+
+      <div class="btn-group segmented" role="group" aria-label="Choose a city">
+        <input type="radio" class="btn-check" name="city" id="city-la" value="LA" autocomplete="off">
+        <label class="btn" for="city-la"><span class="dot la"></span>LA</label>
+
+        <input type="radio" class="btn-check" name="city" id="city-taipei" value="Taipei" autocomplete="off">
+        <label class="btn" for="city-taipei"><span class="dot taipei"></span>Taipei</label>
+
+        <input type="radio" class="btn-check" name="city" id="city-both" value="Both" autocomplete="off" checked>
+        <label class="btn" for="city-both">Both</label>
+      </div>
+
+      <div class="btn-group segmented" role="group" aria-label="Temperature unit">
+        <input type="radio" class="btn-check" name="unit" id="unit-c" value="C" autocomplete="off" checked>
+        <label class="btn" for="unit-c">°C</label>
+
+        <input type="radio" class="btn-check" name="unit" id="unit-f" value="F" autocomplete="off">
+        <label class="btn" for="unit-f">°F</label>
+      </div>
+
+    </div>
+
+    <!-- Grid: 1 column below md, 2 columns from md (768px) up -->
+    <div class="row row-cols-1 row-cols-md-2 g-4">
+
+      <div class="col">
+        <div class="card h-100">
+          <div class="card-header py-3">
+            <h2 class="display h5 mb-1">Heatmap</h2>
+            <p class="small text-secondary mb-0">Which months are wet in each city?</p>
+          </div>
+          <div class="card-body"><div id="heatmap" class="chart"></div></div>
+        </div>
+      </div>
+
+      <div class="col">
+        <div class="card h-100">
+          <div class="card-header py-3">
+            <h2 class="display h5 mb-1">Scatterplot</h2>
+            <p class="small text-secondary mb-0">Are warmer days more humid?</p>
+          </div>
+          <div class="card-body"><div id="scatterplot" class="chart"></div></div>
+        </div>
+      </div>
+
+      <!-- Bar chart -->
+      <div class="col">
+        <div class="card h-100" id="bar-card">
+          <div class="card-header py-3">
+            <h2 class="display h5 mb-1">Bar chart</h2>
+            <p class="small text-secondary mb-0">How much rain falls in a typical month?</p>
+          </div>
+          <div class="card-body"><div id="bar" class="chart"></div></div>
+        </div>
+      </div>
+
+      <div class="col">
+        <div class="card h-100">
+          <div class="card-header py-3">
+            <h2 class="display h5 mb-1">Bubble chart</h2>
+            <p class="small text-secondary mb-0">Are the sunny months the dry ones?</p>
+          </div>
+          <div class="card-body"><div id="bubble" class="chart"></div></div>
+        </div>
+      </div>
+
+    </div>
+
+    <footer class="small text-secondary border-top mt-5 pt-3">
+      <span class="kicker me-2">Sources</span> Open-Meteo Historical Weather API, daily data 2023 to 2024<span class="ms-2">&middot; Built by <a class="link-secondary" href="https://evlynsu.com" target="_blank" rel="noopener">Evelyn Su</a></span>
+    </footer>
+  </div>
+
+  <!-- D3 7.9.0 -->
+  <script src="./vendor/d3.min.js"></script>
+
+  <!-- Temperature units: data stays in °C and converts at draw time -->
+  <script>
+    const units = (() => {
+      let unit = 'C';                                   // 'C' or 'F'
+      return {
+        set: u => { unit = u; },
+        temp: c => unit === 'F' ? c * 9 / 5 + 32 : c,   // °C in, current unit out
+        label: () => `°${unit}`                         // "°C" or "°F"
+      };
+    })();
+  </script>
+
+  <!-- One file per chart -->
+  <script src="./charts/bar.js"></script>
+  <script src="./charts/scatterplot.js"></script>
+  <script src="./charts/heatmap.js"></script>
+  <script src="./charts/bubble.js"></script>
+
+  <!-- Trigger: the city buttons filter all four charts -->
+  <script>
+    const charts = [bar, scatter, heatmap, bubble];
+
+    function filterByCity(city) {
+      charts.forEach(chart => {
+        const rows = chart.getData();
+        if (!rows.length) return;                      // data not loaded yet
+        chart.update(city === 'Both' ? rows : rows.filter(d => d.city === city));
+      });
+    }
+
+    document.querySelectorAll('input[name="city"]').forEach(radio => {
+      radio.addEventListener('change', e => filterByCity(e.target.value));
+    });
+
+    // Linked view: hovering a bar highlights its month in every chart
+    function highlightMonth(month) {
+      d3.selectAll('.chart [data-month]')
+        .classed('is-faded', function () {
+          return month !== null && +this.dataset.month !== month;
+        });
+    }
+
+    bar.onHover(highlightMonth);
+
+    // °C/°F toggle: switch the unit, then redraw with the current city filter
+    document.querySelectorAll('input[name="unit"]').forEach(radio => {
+      radio.addEventListener('change', e => {
+        units.set(e.target.value);
+        filterByCity(document.querySelector('input[name="city"]:checked').value);
+      });
+    });
+  </script>
+
+</body>
+
+</html>
